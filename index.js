@@ -11,6 +11,8 @@ const { connection, authenticate } = require("./database/database");
 authenticate(connection); // efetivar a conexão
 const Cliente = require("./database/cliente"); // configurar o model da aplicação
 const Endereco = require("./database/endereco");
+const Pet = require("./database/pet");
+
 
 // Definição de rotas
 
@@ -33,6 +35,22 @@ app.get("/clientes/:id", async (req, res) => {
     }
 });
 
+// listar pets
+app.get("/pets", async (req, res) => {
+    const listaPets = await Pet.findAll();
+    res.json(listaPets);
+})
+
+// /pets/1
+app.get("/pets/:id", async (req, res) => {    
+    const pet = await Pet.findOne({ where: {id: req.params.id}});
+    if(pet) {
+        res.json(pet)
+    } else {
+        res.status(404).json({message: "Pet não encontrado!"})
+    }
+});
+
 
 // rota para adicionar novo cliente
 app.post("/clientes", async (req, res) => {
@@ -52,9 +70,82 @@ app.post("/clientes", async (req, res) => {
     } catch (err) {
         res.status(500).json({message: "Um erro aconteceu."});
     }
-});   
+}); 
+
+// // rota para adicionar um novo pet:
+// app.post("/pets", async (req, res) => {
+//     const { nome, tipo, porte, dataNasc, clienteId } = req.body;
+//     try {
+//         const novoPet = await Pet.create(
+//             { nome, tipo, porte, dataNasc, clienteId }
+//         )
+//         res.status(201).json({message: "Novo pet adicionado: ", pet: novoPet.toJSON()});
+//     } catch (err) {
+//         res.status(500).json({message: "Um erro aconteceu."});
+//     };
+// });
+
+// rota para adicionar um novo pet:
+//correção profe, com validação, que não é necessária pq com o codigo acima ele ja nao deixa adicionar em um id nao existente:
+app.post("/pets", async (req, res) => {
+    const { nome, tipo, porte, dataNasc, clienteId } = req.body;
+
+    try {
+        const cliente = await Cliente.findByPk(clienteId); // nova função findByPk
+        if(cliente) {
+            const pet = await Pet.create({ nome, tipo, porte, dataNasc, clienteId });
+            res.status(201).json(pet);
+        } else {
+            res.status(404).json({ message: "Cliente não encontrado." });
+        }        
+    } catch (err) {
+        res.status(500).json({message: "Um erro aconteceu."});
+    };
+});
 
 
+// rota para atualizar um cliente
+app.put("/clientes/:id", async (req, res) => {
+    const { nome, email, telefone, endereco } = req.body;
+    const { id } = req.params;
+    try {
+        const cliente = await Cliente.findOne({ where: { id } });
+        if (cliente) {
+            // se o endereço existir vai atualizar ele, e se não existir vai atualizar apenas o restante dos dados
+            if(endereco){ 
+                await Endereco.update(endereco, { where: { clienteId: id }}); // update sempre precisa ter where
+                ////quando o clienteId de Endereco for = id do cliente fornecido em /clientes/:id
+            }
+            //depois de verificar se tem endereço verifica se há atualização nas demais informações
+            //quando o clienteId de Cliente for = id do cliente fornecido em /clientes/:id
+            await Cliente.update({ nome, email, telefone }, { where: { id }}); // a gente está implementando obrigatórios esses dados precisam ser passados, mas o sequelize consegue atualizar se a gente não passar todos esses dados.
+            res.status(200).json({ message: "Cliente atualizado." });
+        } else {
+            //se não encontrar o cliente
+            res.status(404).json({ message: "Cliente não encontrado." });
+        }
+    } catch (err) {
+        //não consegue consultar o bd por algum motivo
+        res.status(500).json({ message: "Um erro aconteceu." });
+    }
+})
+
+
+// excluir um cliente
+app.delete("/clientes/:id", async (req, res) => {
+    const { id } = req.params;
+    const cliente = await Cliente.findOne({ where: { id } }); // no where usa chaves pra colocar o id porque pode se usar varias condições dentro do where: https://sequelize.org/docs/v6/core-concepts/model-querying-basics/#applying-where-clauses
+    try {
+        if(cliente){
+            await cliente.destroy();
+            res.status(200).json({ message: "Cliente removido." });
+        } else {
+            res.status(404).json({ message: "Cliente não encontrado." })
+        }
+    } catch (err) {
+        res.status(500).json({ message: "Um erro aconteceu." });
+    }    
+});
 
 // Escuta de eventos (listen)
 app.listen(3000, () => {
